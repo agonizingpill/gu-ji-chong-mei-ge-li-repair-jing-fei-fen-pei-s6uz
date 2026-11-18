@@ -7,7 +7,11 @@ def register(db,data,user):
 def observe(db,data,user):
     folio=get(db,Accession,data.accession_id,True)
     reject(folio.status=='released','出柜后不能追加隔离病害，请重新办理入柜')
-    row=Observation(**data.model_dump());db.add(row);db.flush();return finish(db,user,'病害复测',row)
+    row=Observation(**data.model_dump());db.add(row);db.flush()
+    # 新测量登记后，该册未领取的旧复测推荐失效并触发补位。
+    from .retest_service import invalidate_for_observation
+    invalidate_for_observation(db,folio)
+    return finish(db,user,'病害复测',row)
 def latest_observation(db,accession_id):
     return db.scalar(select(Observation).where(Observation.accession_id==accession_id).order_by(Observation.id.desc()).limit(1))
 def reviewed_risk(db,accession_id):

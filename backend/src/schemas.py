@@ -47,3 +47,5 @@ class HandoverInput(BaseModel):
     kind:str=Field(pattern='^(storage|exhibition)$')
     recipient:str=Field(min_length=2,max_length=100)
     note:str=Field(min_length=2,max_length=200)
+class RetestLimitInput(BaseModel):
+    daily_limit:int=Field(ge=1,le=100)

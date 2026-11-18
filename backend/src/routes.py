@@ -6,7 +6,7 @@ from .models import *
 from .schemas import *
 from .auth import current,editor,supervisor,issue,password_hash
 from .common import dump
-from . import catalog_service as catalog,isolation_service as isolation,risk_service as risk,treatment_service as treatment,grant_service as grant,handover_service as handovers
+from . import catalog_service as catalog,isolation_service as isolation,risk_service as risk,treatment_service as treatment,grant_service as grant,handover_service as handovers,retest_service as retest
 router=APIRouter()
 @router.post('/auth/login')
 def login(data:Login,db=Depends(session)):
@@ -16,7 +16,12 @@ def login(data:Login,db=Depends(session)):
 @router.get('/workspace')
 def workspace(db=Depends(session),user=Depends(current)):
     models=[Accession,Observation,Cabinet,Isolation,RiskAssessment,Treatment,Step,Grant,Encumbrance,Handover]
-    return {m.__tablename__:[dump(v) for v in db.scalars(select(m).order_by(m.id))] for m in models}
+    data={m.__tablename__:[dump(v) for v in db.scalars(select(m).order_by(m.id))] for m in models}
+    snap=retest.snapshot(db)
+    data['retest_plan']=dump(snap['plan']) if snap else None
+    data['retest_candidates']=[dump(c) for c in snap['candidates']] if snap else []
+    data['retest_stats']={'claimed_count':snap['claimed_count'],'selected_count':snap['selected_count']} if snap else {'claimed_count':0,'selected_count':0}
+    return data
 @router.get('/audit')
 def audits(db=Depends(session),user=Depends(supervisor)):return [dump(v) for v in db.scalars(select(Audit).order_by(Audit.id.desc()).limit(100))]
 @router.post('/accessions')
@@ -47,3 +52,9 @@ def fund(id:int,data:FundInput,db=Depends(session),user=Depends(supervisor)):ret
 def settle(id:int,data:SettleInput,db=Depends(session),user=Depends(supervisor)):return grant.settle(db,id,data,user)
 @router.post('/handovers')
 def handover(data:HandoverInput,db=Depends(session),user=Depends(supervisor)):return handovers.handover(db,data,user)
+@router.post('/retest/plan/rebuild')
+def retest_rebuild(db=Depends(session),user=Depends(editor)):return retest.rebuild(db,user)
+@router.put('/retest/plan/limit')
+def retest_limit(data:RetestLimitInput,db=Depends(session),user=Depends(supervisor)):return retest.set_limit(db,data,user)
+@router.post('/retest/candidates/{id}/claim')
+def retest_claim(id:int,db=Depends(session),user=Depends(editor)):return retest.claim(db,id,user)

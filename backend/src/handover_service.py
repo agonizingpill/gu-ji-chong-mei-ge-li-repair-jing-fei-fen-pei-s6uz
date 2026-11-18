@@ -14,6 +14,9 @@ def handover(db,data,user):
     if data.kind=='storage':
         reject(not isolation,'卷册已出柜，无需重复交接')
         get(db,Cabinet,isolation.cabinet_id,True);isolation.active=False;isolation.exited=now();folio.status='released'
+        # 出柜后该册未领取的复测推荐失效，名额由在柜候选补位。
+        from .retest_service import invalidate_for_exit
+        invalidate_for_exit(db,folio)
     else:
         reject(folio.status!='released' or isolation is not None,'借展需先验收出柜移交库房')
         reject(db.scalar(select(Handover).where(Handover.accession_id==folio.id,Handover.kind=='exhibition')) is not None,'已办理借展交接')

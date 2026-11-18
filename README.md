@@ -12,6 +12,7 @@
 4. 修复工序：方案依序建立工序依赖，资金未占用不得施工；前置工序未完成不可跳步；未施工方案撤销后可修订恢复。
 5. 专项经费：预算、占用、实付分别记录；行锁保障并发不超支；撤销返还占款，核销不得超过已占金额。
 6. 出柜借展：霉面积为 0、含水≤60%、最新低风险复核、工序及经费完成才准出柜；先交库房才准借展。
+7. 每日复测名额：按现有分级模型在含水率、霉面积占比各 ±2 个百分点的 21×21 波动网格上重采样，预测等级与中心点不一致的网格占比即每册跨级概率。各柜先由本柜最高概率候选争一个名额，剩余名额全馆按概率排序。主管设置每日册数上限；修复员领取，计划行锁保证并发不超额、同册当天不重复派名。新测量登记或出柜后，该册未领推荐立即失效并自动补位；已领取与已失效记录保留可追溯，重跑名单不重复派给同一册。
 
 ## 快速启动
 
@@ -49,6 +50,8 @@ docker compose exec backend python -m src.seed
 
 合成样本用于内部可复现检查，不代表真实文保预测效果。现场主管保留最终复核权。观测不存在、未隔离、旧观测复核、预算不足、工序不完及病害未清均是独立业务拒绝条件。后台运行失败记录 `failed` 和原因，修复输入后重新提交分级。
 
+`cross_grade_probability` 复用同一棵训练好的决策树（进程内训练一次缓存），在含水率 `[h-2,h+2]`、霉面积 `[m-2,m+2]`（量程裁剪到 0–100）的 441 点等距网格上枚举预测，虫孔为计数观测保持不变；输出中心点等级、各等级网格占比与跨级概率。它衡量的是该模型在测量波动口径下的等级翻转倾向，不是真实不确定性的外部验证。每日名额服务 `retest_service.py` 据此排序：先每柜一席（柜内已领册视同占席），再全馆按概率取满当日上限；`RetestPlan` 按自然日唯一、`RetestCandidate` 对（计划、卷册）唯一，领取走计划行级锁串行化。
+
 ## 技术结构
 
 | 层 | 实现 |
@@ -59,7 +62,7 @@ docker compose exec backend python -m src.seed
 | 认证与追踪 | JWT 三角色、动作审计、请求追踪与突发请求限制中间件 |
 | ML | NumPy / scikit-learn 决策树、分层留出评估 |
 
-`backend/src/models.py` 是关系模型，`schemas.py` 是输入契约；`catalog_service.py`、`isolation_service.py`、`risk_service.py`、`treatment_service.py`、`grant_service.py`、`handover_service.py` 分别维护六模块约束，`routes.py` 只映射权限和业务调用。建表在首次启动创建，适合独立演示库。
+`backend/src/models.py` 是关系模型，`schemas.py` 是输入契约；`catalog_service.py`、`isolation_service.py`、`risk_service.py`、`treatment_service.py`、`grant_service.py`、`handover_service.py`、`retest_service.py` 分别维护各模块约束，`routes.py` 只映射权限和业务调用。建表在首次启动创建，适合独立演示库。
 
 `frontend/src/pages/` 对应六模块；`components/folio-index.js` 复用卷册索引和选择器，`ledger.js` 复用表格与表单字段，`steps.js` 绘制真实工序依赖。`api/client.js` 统一请求，`stores/workspace.js` 持有会话与卷宗，`utils/format.js` 和 `utils/forms.js` 分别处理展示和可恢复表单状态。双字体是 Noto Serif SC 与 Noto Sans SC；网络不通时浏览器使用 serif / sans-serif 回退。
 
